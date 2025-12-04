@@ -15,18 +15,24 @@ export const formatDate = (dateStr) => {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
-// ========== CATÉGORIES ==========
+// ========== CATÉGORIES AFRICAINES ==========
 export const EXPENSE_CATEGORIES = {
   alimentation: { label: 'Alimentation', emoji: '🍽️' },
   transport: { label: 'Transport', emoji: '🚗' },
+  zemidjan: { label: 'Zémidjan', emoji: '🏍️' },
   logement: { label: 'Logement', emoji: '🏠' },
   sante: { label: 'Santé', emoji: '💊' },
   education: { label: 'Éducation', emoji: '📚' },
   loisirs: { label: 'Loisirs', emoji: '🎮' },
+  vie_nocturne: { label: 'Vie nocturne', emoji: '🌙' },
   shopping: { label: 'Shopping', emoji: '🛍️' },
   telecom: { label: 'Télécom', emoji: '📱' },
+  credit_internet: { label: 'Crédit internet', emoji: '📶' },
+  forfait_mobile: { label: 'Forfait mobile', emoji: '📞' },
   restaurant: { label: 'Restaurant', emoji: '🍔' },
   factures: { label: 'Factures', emoji: '📄' },
+  tontine: { label: 'Tontine', emoji: '🤝' },
+  famille: { label: 'Famille', emoji: '👨‍👩‍👧‍👦' },
   autre: { label: 'Autre', emoji: '📦' }
 }
 
@@ -34,8 +40,10 @@ export const INCOME_CATEGORIES = {
   salaire: { label: 'Salaire', emoji: '💰' },
   freelance: { label: 'Freelance', emoji: '💻' },
   investissement: { label: 'Investissement', emoji: '📈' },
+  tontine: { label: 'Tontine', emoji: '🤝' },
   cadeau: { label: 'Cadeau', emoji: '🎁' },
   remboursement: { label: 'Remboursement', emoji: '🔄' },
+  commerce: { label: 'Commerce', emoji: '🏪' },
   autre: { label: 'Autre', emoji: '📦' }
 }
 
@@ -55,7 +63,6 @@ export const transactionsApi = {
       .select('*')
       .order('date', { ascending: false })
 
-    // Si user connecté, filtrer par user_id
     if (userId) {
       query = query.eq('user_id', userId)
     }
@@ -64,7 +71,6 @@ export const transactionsApi = {
 
     if (error) {
       console.error('Erreur getAll transactions:', error.message)
-      // Si erreur RLS, retourner tableau vide
       return []
     }
     return data || []
@@ -82,12 +88,9 @@ export const transactionsApi = {
       date: transaction.date
     }
 
-    // Ajouter user_id si connecté
     if (userId) {
       insertData.user_id = userId
     }
-
-    console.log('Création transaction:', insertData) // Debug
 
     const { data, error } = await supabase
       .from('transactions')
@@ -96,17 +99,13 @@ export const transactionsApi = {
       .single()
 
     if (error) {
-      console.error('Erreur create transaction:', error.message, error.details, error.hint)
+      console.error('Erreur create transaction:', error.message)
       throw error
     }
-
-    console.log('Transaction créée:', data) // Debug
     return data
   },
 
   async delete(id) {
-    console.log('Suppression transaction:', id) // Debug
-
     const { error } = await supabase
       .from('transactions')
       .delete()
@@ -212,24 +211,13 @@ export const objectivesApi = {
   }
 }
 
-// ========== DONNÉES DÉMO (fallback si base vide) ==========
-const generateDate = (daysAgo) => {
-  const d = new Date()
-  d.setDate(d.getDate() - daysAgo)
-  return d.toISOString().split('T')[0]
-}
-
-export const DEMO_TRANSACTIONS = [
-  { id: 'demo-1', type: 'expense', category: 'alimentation', amount: 25000, description: 'Marché Dantokpa', date: generateDate(1), payment_method: 'cash' },
-  { id: 'demo-2', type: 'expense', category: 'transport', amount: 15000, description: 'Essence moto', date: generateDate(2), payment_method: 'cash' },
-  { id: 'demo-3', type: 'income', category: 'salaire', amount: 450000, description: 'Salaire Décembre', date: generateDate(5), payment_method: 'bank' },
-]
-
+// ========== DONNÉES DÉMO ==========
+export const DEMO_TRANSACTIONS = []
 export const DEMO_OBJECTIVES = []
 export const DEMO_LOANS = []
 export const DEMO_INVESTMENTS = []
 
-// ========== API LEGACY (compatibilité) ==========
+// ========== API LEGACY ==========
 const api = {
   get: async (url) => {
     if (url.includes('/transactions')) {
