@@ -92,16 +92,26 @@ export default function AddTransaction() {
           </button>
         </div>
 
-        {/* Montant */}
+        {/* Montant - SANS POINTS DANS LES ZÉROS */}
         <div>
           <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-seka-text-secondary' : 'text-gray-600'}`}>Montant (FCFA)</label>
           <input
-            type="number"
+            type="text"
             inputMode="numeric"
+            pattern="[0-9]*"
             value={amount}
-            onChange={e => setAmount(e.target.value)}
+            onChange={e => {
+              // Autoriser seulement les chiffres
+              const val = e.target.value.replace(/[^0-9]/g, '')
+              setAmount(val)
+            }}
             placeholder="0"
-            className={`w-full px-4 py-6 rounded-xl border text-3xl font-mono font-bold text-center ${isDark ? 'bg-seka-darker border-seka-border text-seka-text placeholder:text-seka-text-muted' : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400'} focus:outline-none focus:border-seka-green`}
+            className={`w-full px-4 py-6 rounded-xl border text-3xl font-bold text-center ${isDark ? 'bg-seka-darker border-seka-border text-seka-text placeholder:text-seka-text-muted' : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400'} focus:outline-none focus:border-seka-green`}
+            style={{
+              fontFamily: 'system-ui, -apple-system, sans-serif',
+              fontVariantNumeric: 'tabular-nums',
+              letterSpacing: '0.05em'
+            }}
           />
         </div>
 

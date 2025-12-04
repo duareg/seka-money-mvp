@@ -5,8 +5,9 @@ export const formatMoney = (amount) => {
   const num = Number(amount) || 0
   return new Intl.NumberFormat('fr-FR', {
     style: 'decimal',
-    maximumFractionDigits: 0
-  }).format(num) + ' F'
+    maximumFractionDigits: 0,
+    useGrouping: true
+  }).format(num).replace(/\s/g, ' ') + ' F'
 }
 
 export const formatDate = (dateStr) => {
@@ -159,16 +160,19 @@ export const objectivesApi = {
   async create(objective) {
     const userId = await getUserId()
 
+    // Colonnes compatibles avec le schéma Supabase existant
     const insertData = {
       name: objective.name,
-      target: objective.target,
-      saved: objective.saved || 0,
-      deadline: objective.deadline
+      target_amount: objective.target_amount || objective.target,
+      current_amount: objective.current_amount || objective.saved || 0,
+      deadline: objective.deadline || null
     }
 
     if (userId) {
       insertData.user_id = userId
     }
+
+    console.log('Création objectif:', insertData) // Debug
 
     const { data, error } = await supabase
       .from('objectives')
@@ -177,7 +181,7 @@ export const objectivesApi = {
       .single()
 
     if (error) {
-      console.error('Erreur create objective:', error.message)
+      console.error('Erreur create objective:', error.message, error.details, error.hint)
       throw error
     }
     return data

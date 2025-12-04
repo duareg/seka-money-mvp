@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Target, Users, TrendingUp, X, Calendar, FileText, AlertCircle, Loader2 } from 'lucide-react'
+import { ArrowLeft, Plus, Target, Users, TrendingUp, X, Calendar, AlertCircle, Loader2 } from 'lucide-react'
 import { useTheme } from '../App'
 import { formatMoney, objectivesApi } from '../utils/api'
 
@@ -13,7 +13,7 @@ export default function Objectives() {
   const [loading, setLoading] = useState(true)
 
   // Modals
-  const [showModal, setShowModal] = useState(null) // 'new-objective' | 'versement'
+  const [showModal, setShowModal] = useState(null)
   const [selectedObjective, setSelectedObjective] = useState(null)
 
   // Form fields
@@ -24,7 +24,6 @@ export default function Objectives() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Charger les objectifs
   useEffect(() => {
     loadObjectives()
   }, [])
@@ -42,7 +41,7 @@ export default function Objectives() {
     }
   }
 
-  const totalSaved = objectives.reduce((s, o) => s + (o.saved || 0), 0)
+  const totalSaved = objectives.reduce((s, o) => s + (o.saved || o.current_amount || 0), 0)
 
   const resetModal = () => {
     setShowModal(null)
@@ -72,15 +71,15 @@ export default function Objectives() {
     try {
       const newObjective = await objectivesApi.create({
         name: objectiveName.trim(),
-        target: parseInt(objectiveTarget),
-        saved: 0,
+        target_amount: parseInt(objectiveTarget),
+        current_amount: 0,
         deadline: objectiveDeadline || null
       })
       setObjectives(prev => [newObjective, ...prev])
       resetModal()
     } catch (e) {
       console.error('Erreur création objectif:', e)
-      setError('Erreur lors de la création')
+      setError('Erreur: ' + (e.message || 'Vérifiez la table objectives dans Supabase'))
     } finally {
       setSaving(false)
     }
@@ -94,13 +93,20 @@ export default function Objectives() {
     }
 
     const amount = parseInt(paymentAmount)
-    const newSaved = Math.min((selectedObjective.saved || 0) + amount, selectedObjective.target)
+    const currentSaved = selectedObjective.saved || selectedObjective.current_amount || 0
+    const targetAmount = selectedObjective.target || selectedObjective.target_amount || 0
+    const newSaved = Math.min(currentSaved + amount, targetAmount)
 
     setSaving(true)
     setError('')
 
     try {
-      const updated = await objectivesApi.update(selectedObjective.id, { saved: newSaved })
+      // Essayer les deux noms de colonnes possibles
+      const updateData = selectedObjective.current_amount !== undefined
+        ? { current_amount: newSaved }
+        : { saved: newSaved }
+
+      const updated = await objectivesApi.update(selectedObjective.id, updateData)
       setObjectives(prev => prev.map(o => (o.id === selectedObjective.id ? updated : o)))
       resetModal()
     } catch (e) {
@@ -122,6 +128,10 @@ export default function Objectives() {
       console.error('Erreur suppression:', e)
     }
   }
+
+  // Helper pour récupérer les bonnes valeurs (compatibilité colonnes)
+  const getSaved = (obj) => obj.saved ?? obj.current_amount ?? 0
+  const getTarget = (obj) => obj.target ?? obj.target_amount ?? 0
 
   return (
     <div className={`min-h-screen pb-24 ${isDark ? 'bg-seka-dark' : 'bg-gray-50'}`}>
@@ -187,7 +197,7 @@ export default function Objectives() {
               </div>
             )}
 
-            {/* Liste des objectifs */}
+            {/* Liste vide */}
             {!loading && objectives.length === 0 && (
               <div className={`p-6 rounded-xl text-center ${isDark ? 'bg-seka-card/50 border border-seka-border' : 'bg-white shadow-sm border border-gray-100'}`}>
                 <Target className={`w-12 h-12 mx-auto mb-3 ${isDark ? 'text-seka-text-muted' : 'text-gray-400'}`} />
@@ -196,9 +206,11 @@ export default function Objectives() {
               </div>
             )}
 
+            {/* Liste des objectifs */}
             {!loading && objectives.map(obj => {
-              const saved = obj.saved || 0
-              const pct = obj.target > 0 ? (saved / obj.target) * 100 : 0
+              const saved = getSaved(obj)
+              const target = getTarget(obj)
+              const pct = target > 0 ? (saved / target) * 100 : 0
               return (
                 <div key={obj.id} className={`p-4 rounded-xl ${isDark ? 'bg-seka-card/50 border border-seka-border' : 'bg-white shadow-sm border border-gray-100'}`}>
                   <div className="flex items-start justify-between mb-3">
@@ -211,7 +223,7 @@ export default function Objectives() {
                         </p>
                       )}
                     </div>
-                    <button onClick={() => handleDeleteObjective(obj.id)} className="text-seka-red">
+                    <button onClick={() => handleDeleteObjective(obj.id)} className="text-seka-red p-1">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -219,7 +231,7 @@ export default function Objectives() {
                   <div className="mb-3">
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-seka-green font-mono">{formatMoney(saved)}</span>
-                      <span className={isDark ? 'text-seka-text-muted' : 'text-gray-500'}>{formatMoney(obj.target)}</span>
+                      <span className={isDark ? 'text-seka-text-muted' : 'text-gray-500'}>{formatMoney(target)}</span>
                     </div>
                     <div className={`h-2 rounded-full overflow-hidden ${isDark ? 'bg-seka-darker' : 'bg-gray-200'}`}>
                       <div className="h-full rounded-full bg-seka-green transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
@@ -227,16 +239,14 @@ export default function Objectives() {
                     <p className={`text-xs mt-1 text-right ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>{Math.round(pct)}%</p>
                   </div>
 
-                  {pct < 100 && (
+                  {pct < 100 ? (
                     <button
                       onClick={() => { setSelectedObjective(obj); setShowModal('versement') }}
                       className="w-full py-2 rounded-lg bg-seka-green/20 text-seka-green text-sm font-medium"
                     >
                       + Ajouter un versement
                     </button>
-                  )}
-
-                  {pct >= 100 && (
+                  ) : (
                     <div className="text-center py-2 text-seka-green text-sm font-medium">
                       🎉 Objectif atteint !
                     </div>
@@ -288,10 +298,12 @@ export default function Objectives() {
                 <label className={`block text-xs mb-1 ${isDark ? 'text-seka-text-secondary' : 'text-gray-600'}`}>Montant cible (FCFA) *</label>
                 <input
                   type="number"
+                  inputMode="numeric"
                   value={objectiveTarget}
                   onChange={e => setObjectiveTarget(e.target.value)}
                   placeholder="500000"
                   className={`w-full px-4 py-3 rounded-xl border text-lg font-mono ${isDark ? 'bg-seka-darker border-seka-border text-seka-text' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
                 />
               </div>
 
@@ -308,8 +320,9 @@ export default function Objectives() {
               </div>
 
               {error && (
-                <div className="flex items-center gap-2 text-seka-red text-xs bg-seka-red/10 p-2 rounded-lg">
-                  <AlertCircle className="w-4 h-4" /> {error}
+                <div className="flex items-center gap-2 text-seka-red text-xs bg-seka-red/10 p-3 rounded-lg">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{error}</span>
                 </div>
               )}
             </div>
@@ -337,10 +350,12 @@ export default function Objectives() {
               <label className={`block text-xs mb-1 ${isDark ? 'text-seka-text-secondary' : 'text-gray-600'}`}>Montant (FCFA)</label>
               <input
                 type="number"
+                inputMode="numeric"
                 value={paymentAmount}
                 onChange={e => setPaymentAmount(e.target.value)}
                 placeholder="10000"
                 className={`w-full px-4 py-3 rounded-xl border text-xl font-mono text-center ${isDark ? 'bg-seka-darker border-seka-border text-seka-text' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                style={{ fontVariantNumeric: 'tabular-nums' }}
               />
             </div>
 
