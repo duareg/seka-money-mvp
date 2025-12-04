@@ -1,189 +1,301 @@
-import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Check, Loader2 } from 'lucide-react'
-import api, { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../utils/api'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowLeft, Search, Filter, X, Loader2 } from 'lucide-react'
+import { useTheme } from '../App'
+import { transactionsApi, formatMoney, formatDate, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../utils/api'
+
+const PERIODS = [
+  { key: 'all', label: 'Tout' },
+  { key: 'today', label: "Aujourd'hui" },
+  { key: 'week', label: 'Cette semaine' },
+  { key: 'month', label: 'Ce mois' },
+  { key: '3months', label: '3 mois' },
+]
 
 const PAYMENT_METHODS = [
+  { key: 'all', label: 'Tous', emoji: '💳' },
   { key: 'cash', label: 'Espèces', emoji: '💵' },
   { key: 'mobile_money', label: 'Mobile Money', emoji: '📱' },
   { key: 'card', label: 'Carte', emoji: '💳' },
   { key: 'bank', label: 'Banque', emoji: '🏦' },
 ]
 
-export default function AddTransaction() {
+export default function Transactions() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const initialType = searchParams.get('type') || 'expense'
-  
-  const [type, setType] = useState(initialType)
-  const [amount, setAmount] = useState('')
-  const [category, setCategory] = useState('')
-  const [description, setDescription] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('cash')
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const { isDark } = useTheme()
+  const [transactions, setTransactions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [period, setPeriod] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [paymentFilter, setPaymentFilter] = useState('all')
+  const [showFilters, setShowFilters] = useState(false)
 
-  const categories = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
-    
-    if (!amount || parseInt(amount) <= 0) {
-      setError('Entrez un montant valide')
-      return
-    }
-    if (!category) {
-      setError('Sélectionnez une catégorie')
-      return
-    }
-
+  // Charger les données immédiatement
+  const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      await api.post('/api/transactions', {
-        type,
-        amount: parseInt(amount),
-        category,
-        description,
-        payment_method: paymentMethod,
-        date
-      })
-      navigate(-1)
-    } catch (err) {
-      // Mode démo : on redirige quand même
-      navigate(-1)
+      const data = await transactionsApi.getAll()
+      setTransactions(data || [])
+    } catch (e) {
+      console.error('Erreur chargement transactions:', e)
+      setTransactions([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // Charger au montage du composant
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  // Liste de toutes les catégories utilisées
+  const allCategories = useMemo(() => {
+    const cats = {}
+    transactions.forEach(t => {
+      const source = t.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES
+      const cat = source[t.category]
+      if (cat && !cats[t.category]) {
+        cats[t.category] = { key: t.category, ...cat, type: t.type }
+      }
+    })
+    return Object.values(cats).sort((a, b) => a.label.localeCompare(b.label))
+  }, [transactions])
+
+  const filteredTransactions = useMemo(() => {
+    let result = [...transactions]
+
+    const now = new Date()
+    if (period === 'today') {
+      const today = now.toISOString().split('T')[0]
+      result = result.filter(t => t.date === today)
+    } else if (period === 'week') {
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      result = result.filter(t => new Date(t.date) >= weekAgo)
+    } else if (period === 'month') {
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+      result = result.filter(t => t.date?.startsWith(monthKey))
+    } else if (period === '3months') {
+      const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+      result = result.filter(t => new Date(t.date) >= threeMonthsAgo)
+    }
+
+    if (typeFilter !== 'all') result = result.filter(t => t.type === typeFilter)
+    if (categoryFilter !== 'all') result = result.filter(t => t.category === categoryFilter)
+    if (paymentFilter !== 'all') result = result.filter(t => t.payment_method === paymentFilter)
+
+    if (search.trim()) {
+      const s = search.toLowerCase()
+      result = result.filter(t =>
+        t.description?.toLowerCase().includes(s) ||
+        t.category?.toLowerCase().includes(s)
+      )
+    }
+
+    return result.sort((a, b) => new Date(b.date) - new Date(a.date))
+  }, [transactions, period, typeFilter, categoryFilter, paymentFilter, search])
+
+  const totalIncome = filteredTransactions
+    .filter(t => t.type === 'income')
+    .reduce((s, t) => s + t.amount, 0)
+
+  const totalExpense = filteredTransactions
+    .filter(t => t.type === 'expense')
+    .reduce((s, t) => s + t.amount, 0)
+
+  const activeFiltersCount = [
+    period !== 'all',
+    typeFilter !== 'all',
+    categoryFilter !== 'all',
+    paymentFilter !== 'all'
+  ].filter(Boolean).length
 
   return (
-    <div className="min-h-screen bg-seka-dark">
-      <header className="sticky top-0 z-10 bg-seka-dark/95 backdrop-blur-xl border-b border-seka-border px-4 py-4">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-xl bg-seka-card flex items-center justify-center">
-            <ArrowLeft className="w-5 h-5 text-seka-text"/>
+    <div className={`min-h-screen pb-24 ${isDark ? 'bg-seka-dark' : 'bg-gray-50'}`}>
+      <header className={`sticky top-0 z-10 backdrop-blur-xl border-b px-4 py-4 ${isDark ? 'bg-seka-dark/95 border-seka-border' : 'bg-white/95 border-gray-200'}`}>
+        <div className="flex items-center gap-4 mb-3">
+          <button
+            onClick={() => navigate(-1)}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDark ? 'bg-seka-card' : 'bg-gray-100'}`}
+          >
+            <ArrowLeft className={`w-5 h-5 ${isDark ? 'text-seka-text' : 'text-gray-800'}`} />
           </button>
-          <h1 className="text-xl font-bold text-seka-text">
-            {type === 'expense' ? 'Nouvelle dépense' : 'Nouveau revenu'}
-          </h1>
+          <h1 className={`text-xl font-bold ${isDark ? 'text-seka-text' : 'text-gray-900'}`}>Historique</h1>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`ml-auto w-10 h-10 rounded-xl flex items-center justify-center relative ${isDark ? 'bg-seka-card' : 'bg-gray-100'}`}
+          >
+            <Filter className={`w-5 h-5 ${isDark ? 'text-seka-text' : 'text-gray-800'}`} />
+            {activeFiltersCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-seka-green text-seka-darker text-[10px] font-bold flex items-center justify-center">
+                {activeFiltersCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="relative">
+          <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isDark ? 'text-seka-text-muted' : 'text-gray-400'}`} />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher..."
+            className={`w-full pl-10 py-2.5 text-sm rounded-xl border ${isDark ? 'bg-seka-darker border-seka-border text-seka-text placeholder:text-seka-text-muted' : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400'}`}
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+              <X className={`w-4 h-4 ${isDark ? 'text-seka-text-muted' : 'text-gray-400'}`} />
+            </button>
+          )}
         </div>
       </header>
 
-      <form onSubmit={handleSubmit} className="px-4 py-6 space-y-5">
-        {/* Type */}
-        <div className="flex gap-2 p-1 bg-seka-card rounded-xl">
-          <button
-            type="button"
-            onClick={() => { setType('expense'); setCategory('') }}
-            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${type === 'expense' ? 'bg-seka-red text-white' : 'text-seka-text-secondary'}`}
-          >
-            Dépense
-          </button>
-          <button
-            type="button"
-            onClick={() => { setType('income'); setCategory('') }}
-            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${type === 'income' ? 'bg-seka-green text-seka-darker' : 'text-seka-text-secondary'}`}
-          >
-            Revenu
-          </button>
-        </div>
+      {/* Filtres */}
+      {showFilters && (
+        <div className={`px-4 py-4 border-b space-y-4 ${isDark ? 'bg-seka-card border-seka-border' : 'bg-white border-gray-200'}`}>
+          <div>
+            <p className={`text-xs mb-2 font-medium ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>Période</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {PERIODS.map(p => (
+                <button
+                  key={p.key}
+                  onClick={() => setPeriod(p.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all ${period === p.key ? 'bg-seka-green text-seka-darker font-medium' : isDark ? 'bg-seka-darker text-seka-text-secondary' : 'bg-gray-100 text-gray-600'}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        {/* Montant */}
-        <div>
-          <label className="block text-sm font-medium text-seka-text-secondary mb-2">Montant (FCFA)</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            placeholder="0"
-            className="input-seka text-3xl font-mono font-bold text-center py-6"
-          />
-        </div>
+          <div>
+            <p className={`text-xs mb-2 font-medium ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>Type</p>
+            <div className="flex gap-2">
+              {[{ key: 'all', label: 'Tous' }, { key: 'income', label: '↓ Revenus' }, { key: 'expense', label: '↑ Dépenses' }].map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => { setTypeFilter(t.key); if (t.key !== 'all') setCategoryFilter('all') }}
+                  className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${typeFilter === t.key
+                    ? t.key === 'income' ? 'bg-seka-green/20 text-seka-green border border-seka-green'
+                      : t.key === 'expense' ? 'bg-purple-500/20 text-purple-500 border border-purple-500'
+                        : 'bg-seka-green text-seka-darker'
+                    : isDark ? 'bg-seka-darker text-seka-text-secondary' : 'bg-gray-100 text-gray-600'}`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        {/* Catégorie */}
-        <div>
-          <label className="block text-sm font-medium text-seka-text-secondary mb-2">Catégorie</label>
-          <div className="grid grid-cols-4 gap-2">
-            {Object.entries(categories).map(([key, cat]) => (
+          <div>
+            <p className={`text-xs mb-2 font-medium ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>Catégorie</p>
+            <div className="flex gap-2 overflow-x-auto pb-1 flex-wrap">
               <button
-                key={key}
-                type="button"
-                onClick={() => setCategory(key)}
-                className={`p-3 rounded-xl border text-center transition-all ${
-                  category === key
-                    ? type === 'expense' 
-                      ? 'bg-seka-red/15 border-seka-red' 
-                      : 'bg-seka-green/15 border-seka-green'
-                    : 'bg-seka-card border-seka-border'
-                }`}
+                onClick={() => setCategoryFilter('all')}
+                className={`px-3 py-2 rounded-lg text-xs whitespace-nowrap transition-all flex items-center gap-1 ${categoryFilter === 'all' ? 'bg-seka-green text-seka-darker font-medium' : isDark ? 'bg-seka-darker text-seka-text-secondary' : 'bg-gray-100 text-gray-600'}`}
               >
-                <span className="text-xl block mb-1">{cat.emoji}</span>
-                <span className="text-[10px] text-seka-text truncate block">{cat.label}</span>
+                📋 Toutes
               </button>
-            ))}
+              {allCategories.filter(c => typeFilter === 'all' || c.type === typeFilter).map(c => (
+                <button
+                  key={c.key}
+                  onClick={() => setCategoryFilter(c.key)}
+                  className={`px-3 py-2 rounded-lg text-xs whitespace-nowrap transition-all flex items-center gap-1 ${categoryFilter === c.key ? 'bg-seka-gold/20 text-seka-gold border border-seka-gold font-medium' : isDark ? 'bg-seka-darker text-seka-text-secondary' : 'bg-gray-100 text-gray-600'}`}
+                >
+                  {c.emoji} {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className={`text-xs mb-2 font-medium ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>Moyen de paiement</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {PAYMENT_METHODS.map(p => (
+                <button
+                  key={p.key}
+                  onClick={() => setPaymentFilter(p.key)}
+                  className={`px-3 py-2 rounded-lg text-xs whitespace-nowrap transition-all flex items-center gap-1 ${paymentFilter === p.key ? 'bg-purple-500/20 text-purple-400 border border-purple-500 font-medium' : isDark ? 'bg-seka-darker text-seka-text-secondary' : 'bg-gray-100 text-gray-600'}`}
+                >
+                  {p.emoji} {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {activeFiltersCount > 0 && (
+            <button
+              onClick={() => { setPeriod('all'); setTypeFilter('all'); setCategoryFilter('all'); setPaymentFilter('all') }}
+              className="w-full py-2 rounded-lg border border-seka-red/30 text-seka-red text-xs"
+            >
+              Réinitialiser les filtres
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Stats */}
+      <div className="px-4 py-3 grid grid-cols-2 gap-3">
+        <div className={`p-3 rounded-xl ${isDark ? 'bg-seka-card/50 border border-seka-border' : 'bg-white shadow-sm border border-gray-100'}`}>
+          <p className={`text-[10px] ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>
+            Revenus ({filteredTransactions.filter(t => t.type === 'income').length})
+          </p>
+          <p className="text-sm font-bold text-seka-green font-mono">+{formatMoney(totalIncome)}</p>
+        </div>
+        <div className={`p-3 rounded-xl ${isDark ? 'bg-seka-card/50 border border-seka-border' : 'bg-white shadow-sm border border-gray-100'}`}>
+          <p className={`text-[10px] ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>
+            Dépenses ({filteredTransactions.filter(t => t.type === 'expense').length})
+          </p>
+          <p className="text-sm font-bold text-seka-red font-mono">-{formatMoney(totalExpense)}</p>
+        </div>
+      </div>
+
+      {/* Filtre actif badge */}
+      {categoryFilter !== 'all' && (
+        <div className="px-4 pb-2">
+          <div className="flex items-center gap-2 py-2 px-3 bg-seka-gold/10 rounded-lg border border-seka-gold/30">
+            <span className="text-lg">{(EXPENSE_CATEGORIES[categoryFilter] || INCOME_CATEGORIES[categoryFilter])?.emoji}</span>
+            <span className="text-xs text-seka-gold flex-1">{(EXPENSE_CATEGORIES[categoryFilter] || INCOME_CATEGORIES[categoryFilter])?.label}</span>
+            <button onClick={() => setCategoryFilter('all')}><X className="w-4 h-4 text-seka-gold" /></button>
           </div>
         </div>
+      )}
 
-        {/* Description */}
-        <div>
-          <label className="block text-sm font-medium text-seka-text-secondary mb-2">Description (optionnel)</label>
-          <input
-            type="text"
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            placeholder="Ex: Courses au marché..."
-            className="input-seka"
-          />
-        </div>
-
-        {/* Moyen de paiement */}
-        <div>
-          <label className="block text-sm font-medium text-seka-text-secondary mb-2">Moyen de paiement</label>
-          <div className="grid grid-cols-4 gap-2">
-            {PAYMENT_METHODS.map(pm => (
-              <button
-                key={pm.key}
-                type="button"
-                onClick={() => setPaymentMethod(pm.key)}
-                className={`p-2.5 rounded-xl border text-center transition-all ${
-                  paymentMethod === pm.key
-                    ? 'bg-seka-gold/15 border-seka-gold'
-                    : 'bg-seka-card border-seka-border'
-                }`}
-              >
-                <span className="text-lg block mb-0.5">{pm.emoji}</span>
-                <span className="text-[9px] text-seka-text truncate block">{pm.label}</span>
-              </button>
-            ))}
+      {/* Liste */}
+      <div className="px-4 space-y-2">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 text-seka-green animate-spin" />
           </div>
-        </div>
-
-        {/* Date */}
-        <div>
-          <label className="block text-sm font-medium text-seka-text-secondary mb-2">Date</label>
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            className="input-seka"
-          />
-        </div>
-
-        {error && <div className="text-seka-red text-sm text-center bg-seka-red/10 py-3 rounded-xl">{error}</div>}
-
-        <button
-          type="submit"
-          disabled={loading || !amount || !category}
-          className={`w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50 ${
-            type === 'expense' ? 'bg-seka-red text-white' : 'bg-seka-gradient text-seka-darker'
-          }`}
-        >
-          {loading ? <Loader2 className="w-5 h-5 animate-spin"/> : <><Check className="w-5 h-5"/> Enregistrer</>}
-        </button>
-      </form>
+        ) : filteredTransactions.length === 0 ? (
+          <div className={`p-8 text-center rounded-xl ${isDark ? 'bg-seka-card/50 border border-seka-border' : 'bg-white shadow-sm border border-gray-100'}`}>
+            <p className={isDark ? 'text-seka-text-muted' : 'text-gray-500'}>Aucune transaction trouvée</p>
+            <p className={`text-xs mt-1 ${isDark ? 'text-seka-text-muted' : 'text-gray-400'}`}>Essayez de modifier vos filtres</p>
+          </div>
+        ) : (
+          filteredTransactions.map(t => {
+            const isExp = t.type === 'expense'
+            const cats = isExp ? EXPENSE_CATEGORIES : INCOME_CATEGORIES
+            const cat = cats[t.category] || { emoji: '📦', label: t.category }
+            return (
+              <div key={t.id} className={`p-3 flex items-center gap-3 rounded-xl ${isDark ? 'bg-seka-card/50 border border-seka-border' : 'bg-white shadow-sm border border-gray-100'}`}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${isDark ? 'bg-seka-darker' : 'bg-gray-100'}`}>{cat.emoji}</div>
+                <div className="flex-1 min-w-0">
+                  <p className={`font-medium text-sm truncate ${isDark ? 'text-seka-text' : 'text-gray-900'}`}>{cat.label}</p>
+                  <p className={`text-[10px] truncate ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>{t.description || formatDate(t.date)}</p>
+                </div>
+                <div className="text-right">
+                  <p className={`font-mono font-semibold text-sm ${isExp ? 'text-seka-red' : 'text-seka-green'}`}>{isExp ? '-' : '+'}{formatMoney(t.amount)}</p>
+                  <p className={`text-[10px] ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>{formatDate(t.date)}</p>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
     </div>
   )
 }
