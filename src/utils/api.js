@@ -1,13 +1,23 @@
 import { supabase } from '../lib/supabase'
 
 // ========== HELPERS ==========
+// Formater un montant avec séparateurs de milliers
 export const formatMoney = (amount) => {
   const num = Number(amount) || 0
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'decimal',
-    maximumFractionDigits: 0,
-    useGrouping: true
-  }).format(num).replace(/\s/g, ' ') + ' F'
+  // Utiliser des espaces comme séparateurs de milliers (style français)
+  return num.toLocaleString('fr-FR').replace(/\s/g, ' ') + ' F'
+}
+
+// Formater un montant pour l'affichage dans l'input (avec points comme séparateurs)
+export const formatInputMoney = (value) => {
+  const num = parseInt(value.replace(/\D/g, '')) || 0
+  if (num === 0) return ''
+  return num.toLocaleString('fr-FR').replace(/\s/g, '.')
+}
+
+// Parser un montant formaté vers un nombre
+export const parseInputMoney = (formattedValue) => {
+  return parseInt(formattedValue.replace(/\D/g, '')) || 0
 }
 
 export const formatDate = (dateStr) => {
@@ -75,6 +85,20 @@ export const transactionsApi = {
       return []
     }
     return data || []
+  },
+
+  async getById(id) {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (error) {
+      console.error('Erreur getById transaction:', error.message)
+      return null
+    }
+    return data
   },
 
   async create(transaction) {
@@ -160,7 +184,6 @@ export const objectivesApi = {
   async create(objective) {
     const userId = await getUserId()
 
-    // Colonnes compatibles avec le schéma Supabase existant
     const insertData = {
       name: objective.name,
       target_amount: objective.target_amount || objective.target,
@@ -172,8 +195,6 @@ export const objectivesApi = {
       insertData.user_id = userId
     }
 
-    console.log('Création objectif:', insertData) // Debug
-
     const { data, error } = await supabase
       .from('objectives')
       .insert(insertData)
@@ -181,7 +202,7 @@ export const objectivesApi = {
       .single()
 
     if (error) {
-      console.error('Erreur create objective:', error.message, error.details, error.hint)
+      console.error('Erreur create objective:', error.message)
       throw error
     }
     return data

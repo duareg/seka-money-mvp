@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { ArrowLeft, Check, Loader2 } from 'lucide-react'
 import { transactionsApi, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../utils/api'
 import { useTheme } from '../App'
@@ -11,28 +11,79 @@ const PAYMENT_METHODS = [
   { key: 'bank', label: 'Banque', emoji: '🏦' },
 ]
 
+// Formater le montant avec des points comme séparateurs de milliers
+const formatDisplayAmount = (value) => {
+  if (!value) return ''
+  const num = parseInt(value.toString().replace(/\D/g, '')) || 0
+  if (num === 0) return ''
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+}
+
+// Parser le montant affiché vers un nombre
+const parseDisplayAmount = (displayValue) => {
+  return parseInt(displayValue.replace(/\./g, '')) || 0
+}
+
 export default function AddTransaction() {
   const navigate = useNavigate()
   const { isDark } = useTheme()
   const [searchParams] = useSearchParams()
+  const { id } = useParams() // Pour le mode édition
   const initialType = searchParams.get('type') || 'expense'
 
   const [type, setType] = useState(initialType)
-  const [amount, setAmount] = useState('')
+  const [displayAmount, setDisplayAmount] = useState('') // Montant affiché avec séparateurs
   const [category, setCategory] = useState('')
   const [description, setDescription] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [loading, setLoading] = useState(false)
+  const [loadingData, setLoadingData] = useState(false)
   const [error, setError] = useState('')
 
+  const isEditMode = !!id
+
+  // Charger la transaction en mode édition
+  useEffect(() => {
+    if (isEditMode) {
+      loadTransaction()
+    }
+  }, [id])
+
+  const loadTransaction = async () => {
+    setLoadingData(true)
+    try {
+      const transaction = await transactionsApi.getById(id)
+      if (transaction) {
+        setType(transaction.type)
+        setDisplayAmount(formatDisplayAmount(transaction.amount))
+        setCategory(transaction.category)
+        setDescription(transaction.description || '')
+        setPaymentMethod(transaction.payment_method || 'cash')
+        setDate(transaction.date)
+      }
+    } catch (e) {
+      console.error('Erreur chargement transaction:', e)
+      setError('Transaction introuvable')
+    } finally {
+      setLoadingData(false)
+    }
+  }
+
   const categories = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES
+
+  const handleAmountChange = (e) => {
+    const rawValue = e.target.value.replace(/\D/g, '') // Garder seulement les chiffres
+    setDisplayAmount(formatDisplayAmount(rawValue))
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
 
-    if (!amount || parseInt(amount) <= 0) {
+    const amount = parseDisplayAmount(displayAmount)
+
+    if (!amount || amount <= 0) {
       setError('Entrez un montant valide')
       return
     }
@@ -43,21 +94,36 @@ export default function AddTransaction() {
 
     setLoading(true)
     try {
-      await transactionsApi.create({
+      const transactionData = {
         type,
-        amount: parseInt(amount),
+        amount,
         category,
         description,
         payment_method: paymentMethod,
         date
-      })
+      }
+
+      if (isEditMode) {
+        await transactionsApi.update(id, transactionData)
+      } else {
+        await transactionsApi.create(transactionData)
+      }
+
       navigate(-1)
     } catch (err) {
-      console.error('Erreur création transaction:', err)
-      setError('Erreur lors de l\'enregistrement')
+      console.error('Erreur transaction:', err)
+      setError(isEditMode ? 'Erreur lors de la modification' : 'Erreur lors de l\'enregistrement')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (loadingData) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-seka-dark' : 'bg-gray-50'}`}>
+        <Loader2 className="w-8 h-8 text-seka-green animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -68,7 +134,7 @@ export default function AddTransaction() {
             <ArrowLeft className={`w-5 h-5 ${isDark ? 'text-seka-text' : 'text-gray-700'}`} />
           </button>
           <h1 className={`text-xl font-bold ${isDark ? 'text-seka-text' : 'text-gray-900'}`}>
-            {type === 'expense' ? 'Nouvelle dépense' : 'Nouveau revenu'}
+            {isEditMode ? 'Modifier' : type === 'expense' ? 'Nouvelle dépense' : 'Nouveau revenu'}
           </h1>
         </div>
       </header>
@@ -92,27 +158,26 @@ export default function AddTransaction() {
           </button>
         </div>
 
-        {/* Montant - SANS POINTS DANS LES ZÉROS */}
+        {/* Montant avec séparateurs de milliers */}
         <div>
           <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-seka-text-secondary' : 'text-gray-600'}`}>Montant (FCFA)</label>
           <input
             type="text"
             inputMode="numeric"
-            pattern="[0-9]*"
-            value={amount}
-            onChange={e => {
-              // Autoriser seulement les chiffres
-              const val = e.target.value.replace(/[^0-9]/g, '')
-              setAmount(val)
-            }}
+            value={displayAmount}
+            onChange={handleAmountChange}
             placeholder="0"
             className={`w-full px-4 py-6 rounded-xl border text-3xl font-bold text-center ${isDark ? 'bg-seka-darker border-seka-border text-seka-text placeholder:text-seka-text-muted' : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400'} focus:outline-none focus:border-seka-green`}
             style={{
               fontFamily: 'system-ui, -apple-system, sans-serif',
-              fontVariantNumeric: 'tabular-nums',
-              letterSpacing: '0.05em'
+              letterSpacing: '0.02em'
             }}
           />
+          {displayAmount && (
+            <p className={`text-center mt-2 text-sm ${isDark ? 'text-seka-text-muted' : 'text-gray-500'}`}>
+              {parseDisplayAmount(displayAmount).toLocaleString('fr-FR')} FCFA
+            </p>
+          )}
         </div>
 
         {/* Catégorie */}
@@ -186,11 +251,11 @@ export default function AddTransaction() {
 
         <button
           type="submit"
-          disabled={loading || !amount || !category}
+          disabled={loading || !displayAmount || !category}
           className={`w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50 ${type === 'expense' ? 'bg-seka-red text-white' : 'bg-seka-green text-seka-darker'
             }`}
         >
-          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Check className="w-5 h-5" /> Enregistrer</>}
+          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Check className="w-5 h-5" /> {isEditMode ? 'Modifier' : 'Enregistrer'}</>}
         </button>
       </form>
     </div>

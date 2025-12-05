@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useState, useEffect, createContext, useContext } from 'react'
 import { supabase } from './lib/supabase'
 
@@ -35,7 +35,7 @@ export const useTheme = () => {
 function ThemeProvider({ children }) {
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem('seka_theme')
-    return saved ? saved === 'dark' : true // Dark par défaut
+    return saved ? saved === 'dark' : true
   })
 
   useEffect(() => {
@@ -64,14 +64,12 @@ function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Récupérer la session actuelle
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
     })
 
-    // Écouter les changements d'auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
@@ -85,6 +83,7 @@ function AuthProvider({ children }) {
     await supabase.auth.signOut()
     setUser(null)
     setSession(null)
+    // La redirection se fait automatiquement via PrivateRoute
   }
 
   return (
@@ -96,8 +95,14 @@ function AuthProvider({ children }) {
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
+
   if (loading) return <Splash />
-  return isAuthenticated ? children : <Navigate to="/login" />
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  return children
 }
 
 function AppLayout({ children }) {
@@ -129,11 +134,12 @@ export default function App() {
             <Route path="/" element={<PrivateRoute><AppLayout><Dashboard /></AppLayout></PrivateRoute>} />
             <Route path="/transactions" element={<PrivateRoute><AppLayout><Transactions /></AppLayout></PrivateRoute>} />
             <Route path="/add" element={<PrivateRoute><AppLayout><AddTransaction /></AppLayout></PrivateRoute>} />
+            <Route path="/edit/:id" element={<PrivateRoute><AppLayout><AddTransaction /></AppLayout></PrivateRoute>} />
             <Route path="/objectives" element={<PrivateRoute><AppLayout><Objectives /></AppLayout></PrivateRoute>} />
             <Route path="/profile" element={<PrivateRoute><AppLayout><Profile /></AppLayout></PrivateRoute>} />
             <Route path="/analyses" element={<PrivateRoute><AppLayout><Analyses /></AppLayout></PrivateRoute>} />
             <Route path="/investment/add" element={<PrivateRoute><AppLayout><AddInvestment /></AppLayout></PrivateRoute>} />
-            <Route path="*" element={<Navigate to="/" />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </AuthProvider>
       </ThemeProvider>

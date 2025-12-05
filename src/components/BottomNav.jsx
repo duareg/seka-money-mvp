@@ -22,7 +22,6 @@ export default function BottomNav() {
           const isActive = location.pathname === item.path
           const Icon = item.icon
 
-          // Bouton central +
           if (item.isCenter) {
             return (
               <button
@@ -53,7 +52,6 @@ export default function BottomNav() {
         })}
       </div>
 
-      {/* Safe area pour iPhone */}
       <div className="h-safe-area-inset-bottom" />
     </nav>
   )
