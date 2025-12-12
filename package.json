@@ -1,5 +1,8 @@
 {
-  "dependencies": {
-    "@supabase/supabase-js": "^2.86.0"
+  "name": "seka-money-mvp",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix frontend run build",
+    "dev": "npm --prefix frontend run dev"
   }
 }
