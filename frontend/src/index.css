@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --seka-green: #00D09C;
+  --seka-red: #FF6B6B;
+  --seka-gold: #D4AF37;
+  --seka-dark: #0F1419;
+  --seka-darker: #080B0E;
+  --seka-card: #1A1F26;
+  --seka-border: #2A3038;
+  --seka-text: #FFFFFF;
+  --seka-text-secondary: #A0AEC0;
+  --seka-text-muted: #6B7280;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, html, body {
+  background-color: #0F1419;
+  overflow-x: hidden;
+}
+
+body {
+  background-color: #0F1419;
+}
+
+html, body {
+  background-color: #0F1419;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.bg-mesh {
+  background-image: 
+    radial-gradient(at 40% 20%, rgba(0, 208, 156, 0.08) 0px, transparent 50%),
+    radial-gradient(at 80% 0%, rgba(139, 92, 246, 0.06) 0px, transparent 50%),
+    radial-gradient(at 0% 50%, rgba(0, 208, 156, 0.05) 0px, transparent 50%);
+}
+
+.bg-seka-gradient {
+  background: linear-gradient(135deg, #00D09C 0%, #00B386 100%);
+}
+
+.input-seka {
+  @apply w-full px-4 py-3.5 rounded-xl bg-seka-darker border border-seka-border text-seka-text placeholder:text-seka-text-muted focus:outline-none focus:border-seka-green transition-colors;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2A3038;
+  border-radius: 3px;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
